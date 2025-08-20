@@ -10,6 +10,11 @@ from rich.table import Table
 from rich.live import Live
 from rich.text import Text
 from rich import box
+import sys
+import os
+
+# Add the current directory to the path to ensure local imports work
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
 from database import TaskManager
@@ -29,6 +34,7 @@ class ProductivityDashboard:
         self.focus_timer = FocusTimer()
         self.focus_mode = FocusMode()
         self.layout = Layout()
+        self.last_update = 0
         
     def setup_layout(self):
         # Divide the layout into sections
@@ -118,8 +124,8 @@ class ProductivityDashboard:
         timer_text.append(f"Time: {timer_status['time_remaining']}\n")
         timer_text.append(f"Session: {timer_status['sessions_completed']}/4\n")
         
-        focus_status = "Active" if self.focus_mode.is_active() else "Inactive"
-        focus_style = "green" if self.focus_mode.is_active() else "red"
+        focus_status = "Active" if self.focus_mode.is_active else "Inactive"
+        focus_style = "green" if self.focus_mode.is_active else "red"
         timer_text.append(f"Focus Mode: [{focus_style}]{focus_status}[/{focus_style}]")
         
         return Panel(timer_text, title="Focus Timer", border_style="magenta")
@@ -186,7 +192,7 @@ class ProductivityDashboard:
             self.focus_timer.start_break()
     
     def toggle_focus_mode(self):
-        if self.focus_mode.is_active():
+        if self.focus_mode.is_active:
             self.focus_mode.disable()
             console.print("Focus mode disabled", style="red")
         else:
@@ -200,16 +206,30 @@ class ProductivityDashboard:
             while True:
                 try:
                     # Refresh data every 30 seconds
-                    if int(time.time()) % 30 == 0:
+                    current_time = time.time()
+                    if current_time - self.last_update > 30:
                         live.update(self.refresh_dashboard())
+                        self.last_update = current_time
                     
-                    # Check for user input
-                    key = console.input("Command: ").lower() if console.input_timeout(1) else ""
-                    if key and not self.handle_input(key):
-                        break
+                    # Check for user input with a timeout
+                    try:
+                        # Use a non-blocking input approach
+                        import select
+                        import sys
+                        
+                        if select.select([sys.stdin], [], [], 0.1)[0]:
+                            key = sys.stdin.readline().strip().lower()
+                            if key and not self.handle_input(key):
+                                break
+                    except (ImportError, Exception):
+                        # Fallback for Windows or other systems without select
+                        time.sleep(0.1)
                         
                 except KeyboardInterrupt:
                     break
+                except Exception as e:
+                    console.print(f"Error: {e}", style="red")
+                    time.sleep(1)
 
 def main():
     parser = argparse.ArgumentParser(description="Intelligent CLI Productivity Dashboard")
